@@ -1,0 +1,360 @@
+/*
+*******************************************************************************
+Writing a program to design Vending Machine with all possible tests.          *
+Accepting coins of 1,5,10,25 Cents i.e. penny, nickel, dime, and quarter.     *
+Allowing user to select products Coke(25), Pepsi(35), Soda(45)                *
+Allowing user to take refund by cancelling the request.                       *
+Returning selected product and remaining change if any.                       *
+Allow reset operation for vending machine supplier.                           *
+                                                                              *
+Name :- Bunmi Osula                                                           *
+Date :- 28th September 2020						      *																			*
+*******************************************************************************
+*/	
+
+
+CREATE OR REPLACE PROCEDURE Vending_Machine_Proc(F_BEVERAGE_NO NUMBER) AS
+
+-- DECLARING VARIABLES TO BE USED BY THE APPLICATION
+-- FROM TABLES BEVERAGE_INVENTORY, TRANSACTION_TABLE, INCOMING_FUNDS 
+
+V_BEVERAGE_NO 		BEVERAGE_INVENTORY.BEVERAGE_NO%TYPE;
+V_BEVERAGE_NAME    	BEVERAGE_INVENTORY.BEVERAGE_NAME%TYPE;
+V_BEVERAGE_TYPE    	BEVERAGE_INVENTORY.BEVERAGE_TYPE%TYPE;  
+V_BEVERAGE_TRANS_ID	BEVERAGE_INVENTORY.TRANSACTION_ID%TYPE;   
+V_BEVERAGE_PRICE   	BEVERAGE_INVENTORY.BEVERAGE_PRICE%TYPE;  
+V_TOTAL_DAY_SOLD	BEVERAGE_INVENTORY.TOTAL_DAY_SOLD%TYPE;
+V_BEVERAGE_AVAIL_NO	BEVERAGE_INVENTORY.BEVERAGE_AVAIL_NO%TYPE
+               
+V_AMOUNT_INCOMING  	TRASACTION_TABLE.AMOUNT_INCOMING%TYPE;                 
+V_TRANS_DATE   		TRANSACTION_TABLE.TRANS_DATE%TYPE;  
+V_TRANSACTION_ID   	TRANSACTION_TABLE.LASTRANS_ID%TYPE;                 
+V_TRANS_STATUS		TRANSACTION_TABLE.TRANS_STATUS%TYPE;
+V_REFUND_AMT		TRANSACTION_TABLE.SUM_AMT%TYPE;
+V_TOTAL_AMOUNT		TRANSACTION_TABLE.CHANGE_AMT%TYPE;
+V_PRIOR_DAY_SOLD	TRANSACTION_TABLE.PRIOR_DAY_SOLD%TYPE;
+V_START_TRANSTIME	TRANSACTION_TABLE.START_TRANSTIME%TYPE; 
+V_END_TRANSTIME		TRANSACTION_TABLE.END_TRANSTIME%TYPE; 
+V_TRANS_BEVERAGE_NO     TRANSACTION_TABLE.TRANS_BEVERAGE_NO%TYPE;
+V_CHANGE_AMOUNT	  	TRASACTION_TABLE.CHANGE_AMOUNT%TYPE;
+
+V_WRONG_COINS	        INCOMING_FUNDS.TRANS_SUM_FUNDS%TYPE;
+F_TRANS_SINGLE_FUND     INCOMING_FUNDS.TRANS_SINGLE_FUND%TYPE;
+V_TRANS_SINGLE_FUND     INCOMING_FUNDS.TRANS_SINGLE_FUND%TYPE;
+V_TRANS_SUM_FUNDS       INCOMING_FUNDS.TRANS_SUM_FUNDS%TYPE;
+V_INCOMING_TRANS_ID     INCOMING_FUNDS.INCOMING_TRANS_ID%TYPE;
+V_INC_TRANSFUNDS_DATE	INCOMING_FUNDS.INC_TRANSFUNDS_DATE%TYPE;
+V_CHANGE_AMOUNT	  	INCOMING_FUNDS.TRANS_SINGLE_FUND%TYPE;
+V_INC_TRANS_STATUS      INCOMING_FUNDS.INC_TRANS_STATUS%TYPE;
+
+V_BEV_COST_BALANCE INCOMING_FUNDS.TRANS_SINGLE_FUND%TYPE;     
+F_INPUT							VARCHAR2(12);
+F_INPUT2						VARCHAR2(12);
+F_INPUT3						VARCHAR2(12);
+V_MOD_VAL						NUMBER;
+
+
+*/
+**************************************************************************************
+Note:- If Customer clicks the Coca-cola icon or types in the number 25               *
+The Coca-Cola icon Passes the number 25 to the App as the Formal Parameter 	     * 
+The Vending Machine will begin processing for a Coke purchase.                       *
+The Pepsi icon or Number 35 would have been for Pepsi, 45 for Soda, 15 for Tea, etc  *
+**************************************************************************************
+*/
+
+																																										*
+																																									
+-- THE ACTUAL PROCEDURE STARTS HERE
+
+	BEGIN
+-- THIS IS TO SELECT ALL THE PROBABLE DATA ABOUT THE BEVERAGE INTO SOME OF THE VARIABLES ABOVE
+
+SELECT 
+ BEVERAGE_NO  , BEVERAGE_NAME  , BEVERAGE_TYPE   , BEVERAGE_AVAIL_NO  ,BEVERAGE_PRICE   , TOTAL_DAY_SOLD 
+INTO       
+V_BEVERAGE_NO , V_BEVERAGE_NAME ,V_BEVERAGE_TYPE , V_BEVERAGE_AVAIL_NO, V_BEVERAGE_PRICE,V_TOTAL_DAY_SOLD
+FROM BEVERAGE_INVENTORY
+WHERE BEVERAGE_NO = F_BEVERAGE_NO;
+
+
+IF V_BEVERAGE_AVAIL_NO < 1 THEN 
+
+NULL;
+
+DBMS_OUTPUT.PUT_LINE('The ' || V_BEVERAGE_NAME || ' a '|| V_BEVERAGE_TYPE || ' No. ' ||V_BEVERAGE_NO
+|| ' You are trying to purchase is Presenlty out of stock ');
+
+DBMS_OUTPUT.PUT_LINE('Kindly select another drink to continue or try at another time or from another machine');
+DBMS_OUTPUT.PUT_LINE('Many thanks for your understanding');
+
+
+
+elsif V_BEVERAGE_AVAIL_NO >= 1 THEN
+
+DBMS_OUTPUT.PUT_LINE('The  ' || V_BEVERAGE_NAME || ' a '|| V_BEVERAGE_TYPE || ' No. ' ||V_BEVERAGE_NO
+|| ' You are trying to purchase is  '|| V_BEVERAGE_PRICE );
+
+DBMS_OUTPUT.PUT_LINE('This Machine Accepts coins of 1,5,10,25 Cents i.e. penny, nickel, dime, and quarter ');
+DBMS_OUTPUT.PUT_LINE('Please Make payments accordingly');
+
+-- checking to make sure that we only have funds coming in in multiples of 1,5,10,25 and not higher at once)
+-- INCOMING_FUNDS are registered as the Customer drops coins into the slot and read as F_INCOMING_FUNDS
+-- Each dropped funds are checked against the expected values before inserting as on the INCOMING_FUNDS in Isolated Atomicity
+
+V_MOD_VAL := MOD(F_TRANS_SINGLE_FUND,1);
+		
+    IF V_MOD_VAL != '0' or  F_TRANS_SINGLE_FUND >25 THEN
+    	V_WRONG_COINS:=F_TRANS_SINGLE_FUND;
+    
+		NULL;
+		
+
+DBMS_OUTPUT.PUT_LINE('This Machine only Accepts coins of 1,5,10,25 Cents i.e. penny, nickel, dime, and quarter and nothing more ');
+DBMS_OUTPUT.PUT_LINE('Kindly ensure that those are the coins fed into the machine');
+DBMS_OUTPUT.PUT_LINE('Do collect the rejected coins '|| V_WRONG_COINS ||' below  ');
+
+ 
+
+*/
+*********************************************************
+Call the sequence TRANSACTION_SEQ												*
+Written as:-  DROP SEQUENCE TRANSACTION_SEQ;
+
+CREATE SEQUENCE TRANSACTION_SEQ
+START WITH 1
+INCREMENT BY 1
+MINVALUE  1
+MAXVALUE  999999
+ORDER
+CYCLE
+;													*
+The Sequence will populate the Transaction id						*
+*********************************************************
+*/
+
+-- every dropped coin in slot evokes a trigger (TRIGG_SLOT_DROP_COINS) to insert on the INCOMING_FUNDS table
+-- Inserting into Table INCOMING_FUNDS every valid dropped coins against the present single transaction ID
+
+ ELSIF V_MOD_VAL = '0' and  F_TRANS_SINGLE_FUND <25 THEN
+ V_TRANS_SINGLE_FUND:=F_TRANS_SINGLE_FUND;
+-- V_TRANSACTION_ID := TRANSACTION_SEQ.NEXTVAL;
+
+Select TRANSACTION_SEQ.NEXTVAL into V_TRANSACTION_ID from dual;
+V_INCOMING_TRANS_ID:= V_TRANSACTION_ID;
+Select TO_CHAR(SYSDATE, 'DD-MON-YYYY'), TO_CHAR(SYSDATE, 'HH24:MI:SS')
+into 
+V_TRANS_DATE, V_START_TRANSTIME
+from dual;
+
+Insert into TRANSACTION_TABLE
+(TRANS_DATE   
+,TRANSACTION_ID                
+,TRANS_STATUS			
+,PRIOR_DAY_SOLD
+,START_TRANSTIME		 
+,TRANS_BEVERAGE_NO) 
+values           
+(V_TRANS_DATE   			
+,V_TRANSACTION_ID                   
+,'PENDING'	
+,V_TOTAL_DAY_SOLD		
+,V_START_TRANSTIME		 
+,V_TRANS_BEVERAGE_NO); 
+
+
+COMMIT;
+-- every dropped coin in slot evokes a trigger to insert on the INCOMING_FUNDS table
+-- Inserting into Table INCOMING_FUNDS every valid dropped coins against the present single transaction ID
+
+Insert into INCOMING_FUNDS
+(TRANS_SINGLE_FUND,INCOMING_TRANS_ID, INC_TRANSFUNDS_DATE, V_INC_TRANS_STATUS)
+values
+(V_TRANS_SINGLE_FUND, V_TRANSACTION_ID, V_TRANS_DATE, 'IN-PROGRESS');
+
+-- Add up all the inserted coins for one transaction ID to go on
+select sum(TRANS_SINGLE_FUND) into V_TRANS_SUM_FUNDS 
+from INCOMING_FUNDS
+where INCOMING_TRANS_ID = V_TRANSACTION_ID;
+
+-- As another Fund is coming in , An update is required
+
+update INCOMING_FUNDS
+set TRANS_SUM_FUNDS = V_TRANS_SUM_FUNDS
+where INCOMING_TRANS_ID = V_TRANSACTION_ID;
+
+COMMIT;
+-- Check if the Sum Funds paid by Customer can cover the cost of the Drink
+
+ IF V_TRANS_SUM_FUNDS < V_BEVERAGE_PRICE Then 
+    V_BEV_COST_BALANCE:=V_BEVERAGE_PRICE-V_TRANS_SUM_FUNDS;
+    
+DBMS_OUTPUT.PUT_LINE('This Machine only Accepts coins of 1,5,10,25 Cents i.e. penny, nickel, dime, and quarter and nothing more ');
+
+DBMS_OUTPUT.PUT_LINE('You have paid so far '|| V_TRANS_SUM_FUNDS  ||' out of ' ||V_BEVERAGE_PRICE );
+DBMS_OUTPUT.PUT_LINE('Kindly add '|| V_BEV_COST_BALANCE ||' to get your desired beverage' );
+DBMS_OUTPUT.PUT_LINE('Many thnaks  ');
+      
+  elsif V_TRANS_SUM_FUNDS >= V_BEVERAGE_PRICE Then
+   V_CHANGE_AMOUNT:=V_TRANS_SUM_FUNDS-V_BEVERAGE_PRICE;
+   V_TOTAL_AMOUNT := V_TRANS_SUM_FUNDS;
+  
+
+DBMS_OUTPUT.PUT_LINE('Kindly Confirm to Proceed with your Order by Selecting the ENTER Button');  
+DBMS_OUTPUT.PUT_LINE('or you may abort this Transaction by selecting the CANCEL button' );
+
+-- Machine input1 as stored in F_INPUT1
+IF F_INPUT='CANCEL' then
+ DBMS_OUTPUT.PUT_LINE('Are yousure you want to Cancel this Order?');
+ DBMS_OUTPUT.PUT_LINE('Press YES to confirm Cancellation,Select NO to Continue with order ');
+ 
+ -- Machine input2 as stored in F_INPUT2 
+  IF F_INPUT2='YES' then
+  
+  Select TO_CHAR(SYSDATE, 'HH24:MM:SS')
+into 
+V_END_TRANSTIME
+from dual;
+  
+  Update TRANSACTION_TABLE
+  set TRANS_STATUS = 'Cancelled', REFUND_AMT=V_TRANS_SUM_FUNDS
+ ,V_END_TRANSTIME=V_END_TRANSTIME   where TRANSACTION_ID=V_TRANSACTION_ID;
+ 
+  
+UPDATE INCOMING_FUNDS
+set INC_TRANS_STATUS='CANCELLED' 
+where TRANSACTION_ID=V_TRANSACTION_ID;
+
+DBMS_OUTPUT.PUT_LINE('We are Sorry to see you are not happy with your order TransactionID:-'||V_TRANSACTION_ID );
+DBMS_OUTPUT.PUT_LINE('Kindly collect your full refund of �'||V_TRANS_SUM_FUNDS ||' from the Return tray below here') ;
+DBMS_OUTPUT.PUT_LINE('We hope to see you again soon') ; 
+
+
+ELSIF F_INPUT='ENTER' or F_INPUT2='NO' then 
+
+-- We are in Business .. Let us serve our customer.
+
+ Select TO_CHAR(SYSDATE, 'HH24:MM:SS')
+into 
+V_END_TRANSTIME
+from dual;
+
+V_CHANGE_AMOUNT:=V_TRANS_SUM_FUNDS - V_BEVERAGE_PRICE ;
+V_BEVERAGE_AVAIL_NO=V_BEVERAGE_AVAIL_NO-1;
+V_TOTAL_AMOUNT := V_TRANS_SUM_FUNDS;
+  
+ Update TRANSACTION_TABLE
+ set TRANS_STATUS = 'Successful', CHANGE_AMOUNT=V_CHANGE_AMOUNT
+ ,TOTAL_AMOUNT=V_TOTAL_AMOUNT
+ ,END_TRANSTIME=V_END_TRANSTIME   
+ where TRANSACTION_ID=V_TRANSACTION_ID;
+ 
+  
+UPDATE INCOMING_FUNDS
+set INC_TRANS_STATUS='COMPLETED'
+where TRANSACTION_ID=V_TRANSACTION_ID;
+  
+UPDATE BEVERAGE_INVENTORY
+set BEVERAGE_AVAIL_NO = V_BEVERAGE_NO,
+V_TOTAL_DAY_SOLD = V_TOTAL_DAY_SOLD+1
+where BEVERAGE_NO = V_BEVERAGE_NO;
+
+COMMIT;
+
+DBMS_OUTPUT.PUT_LINE('The ' || V_BEVERAGE_NAME || ' a '|| V_BEVERAGE_TYPE || ' No. ' ||V_BEVERAGE_NO
+|| ' You Just paid for has been dropped in the Beverage bin ');
+
+  IF V_CHANGE_AMOUNT<1 then
+  DBMS_OUTPUT.PUT_LINE('Thank you for your business, Enjoy your '||V_BEVERAGE_TYPE);
+  
+   ELSIF V_CHANGE_AMOUNT >=1 then
+  DBMS_OUTPUT.PUT_LINE('Kindly remember to pick your change of  '||V_CHANGE_AMOUNT ||' from the Coins Tray'); 
+  DBMS_OUTPUT.PUT_LINE('Thank you you for your business, Enjoy your '||V_BEVERAGE_TYPE); 
+  
+  
+
+
+      END IF;
+
+			END IF;
+				
+
+		END IF;
+		
+		END IF;
+
+ 
+ END IF;
+ 
+END IF;
+
+exception
+
+when NO_DATA_FOUND then 
+
+DBMS_OUTPUT.PUT_LINE('YOU MAY HAVE PUNCHED IN A BEVERAGE NO. NOT KNOWN TO THE MACHINE');
+DBMS_OUTPUT.PUT_LINE('Confirm that the Beverage No. ' || F_BEVERAGE_NO||'  is a valid number ');
+DBMS_OUTPUT.PUT_LINE('IF THE ABOVE BEVERAGE NO IS CORRECT, Kindly call Supply support on 08451234567');
+
+when ZERO_DIVIDE then
+
+DBMS_OUTPUT.PUT_LINE('The coins inserted seem to be unacceptable' );
+DBMS_OUTPUT.PUT_LINE(F_TRANS_SINGLE_FUND || '  seem to be causing a problem');
+DBMS_OUTPUT.PUT_LINE('If the above is not the case, Kindly call Supply support on 08451234567');
+
+
+when TIMEOUT_ON_RESOURCE then
+
+DBMS_OUTPUT.PUT_LINE('We can see you are trying to purchase Item No. ' ||F_BEVERAGE_NO);
+DBMS_OUTPUT.PUT_LINE('THE OPERATION HAS TAKEN TOO LONG TO BE EXECUTED AND HENCE TIMED OUT BY THE SERVER ');
+DBMS_OUTPUT.PUT_LINE('PLEASE RE-TRY THE OPERATION AND IF TIMED OUT AGAIN, ACCEPT OUR APOLIGIES AND RE-TRY');
+DBMS_OUTPUT.PUT_LINE('IF THE ABOVE OPERATION IS VALID, Kindly call Supply support on 08451234567');
+
+when INVALID_NUMBER then
+
+DBMS_OUTPUT.PUT_LINE('There seem to be Invalid number encountered somehwere in the program');
+DBMS_OUTPUT.PUT_LINE('If the above is not the case, Kindly call Supply support on 08451234567');
+
+
+when VALUE_ERROR then
+
+DBMS_OUTPUT.PUT_LINE('There seem to be a problem with Value that is not resolved');
+DBMS_OUTPUT.PUT_LINE('If the above is not the case, Kindly call Supply support on 08451234567');
+
+
+when PROGRAM_ERROR then
+
+DBMS_OUTPUT.PUT_LINE('Please check the ' ||F_BEVERAGE_NO || ' and re-start' );
+DBMS_OUTPUT.PUT_LINE('EITHER  '|| F_TRANS_SINGLE_FUND || '  IS NOT A Currency OR '|| F_BEVERAGE_NO || '  IS NOT A valid Product number ');
+DBMS_OUTPUT.PUT_LINE('If the above is not the case, Kindly call Supply support on 08451234567');
+DBMS_OUTPUT.PUT_LINE('Press the RESET Button');
+
+REFUND_AMT=V_REFUND_AMT;
+DBMS_OUTPUT.PUT_LINE('Please pick your full refund from the Coin tray below'); 
+DBMS_OUTPUT.PUT_LINE('If the above is not the case, Kindly call Supply support on 08451234567');  
+
+  Update TRANSACTION_TABLE
+  set TRANS_STATUS = 'RESET', REFUND_AMT='0', CHANGE_AMT='0', TOTAL_AMOUNT='0'
+  where TRANSACTION_ID=V_TRANSACTION_ID;
+ 
+  
+UPDATE INCOMING_FUNDS
+set INC_TRANS_STATUS='RESET', TRANS_SUM_FUNDS='0', TRANS_SINGLE_FUND='0',CHANGE_AMOUNT='0'
+where TRANSACTION_ID=V_TRANSACTION_ID;
+
+DBMS_OUTPUT.PUT_LINE('You would have received any funds previuosly inserted in the tray by now');
+DBMS_OUTPUT.PUT_LINE('Kindly Start again and the process shall trigger start as soon as you are inserting coins');
+
+
+
+-- Trap other unplanned for and unseen errors
+when OTHERS then
+
+
+
+DBMS_OUTPUT.PUT_LINE('THERE SEEM TO BE A PROBLEM WITH EITHER THE '||F_BEVERAGE_NO|| ' OR THE '||F_TRANS_SINGLE_FUND ||' WHICH WE CANNOT TELL AT THIS STAGE');
+DBMS_OUTPUT.PUT_LINE('If the above is not the case, Kindly call Supply support on 08451234567');
+
+
+END Vending_Machine_Proc;
+/

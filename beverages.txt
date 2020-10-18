@@ -1,0 +1,304 @@
+set serveroutput on
+set pages 40 lines 200 verify on showmode on echo on
+
+-- Connect as SYSTEM with DBA privilege to enable creation of user Bunmi
+conn system/Passwordv7@OIDDB2
+
+--One move to create User Bunmi as well as grant connect and gives resource right on DB.
+ 
+grant connect, resource to Bunmi identified by Osula;
+
+
+-- This move protect the Schema Bunmi if already existed . it will only add privilege 
+-- If user not existed, it will create user as well as add privilege.
+
+conn Bunmi/Osula@OIDDB2
+-- Connect as the new user Bunmi to run this script
+-- Otherwise it will just run in System Schema
+
+
+
+DROP SEQUENCE TRANSACTION_SEQ;
+
+CREATE SEQUENCE TRANSACTION_SEQ
+START WITH 1
+INCREMENT BY 1
+MINVALUE  1
+MAXVALUE  999999
+ORDER
+CYCLE
+;
+
+
+--Level 0 Tables
+DROP TABLE BEVERAGE_INVENTORY CASCADE CONSTRAINTS;
+
+CREATE TABLE BEVERAGE_INVENTORY
+(BEVERAGE_NO 			  number(4)  Primary key
+,BEVERAGE_NAME      varchar2(12)
+,BEVERAGE_TYPE      varchar2(12)  
+,BEVERAGE_TRANS_ID	number(4)   
+,BEVERAGE_PRICE   	number(7,2)  
+,TOTAL_DAY_SOLD		  number(6)
+,BEVERAGE_AVAIL_NO	number(6)
+)
+;
+
+--Level 1 Tables
+DROP TABLE TRANSACTION_TABLE CASCADE CONSTRAINTS;
+
+create TABLE TRANSACTION_TABLE
+(TRANSACTION_ID    number(4) Primary key
+,AMOUNT_INCOMING   number(7,2)    
+,TRANS_STATUS			varchar2(12)
+,REFUND_AMT	      number(7,2)		
+,TOTAL_AMOUNT			number(7,2)
+,PRIOR_DAY_SOLD    number(6)
+,TRANS_DATE 	      date	
+,START_TRANSTIME		varchar2(12) 
+,END_TRANSTIME			varchar2(12)
+,TRANS_BEVERAGE_NO number(4)  References BEVERAGE_INVENTORY(BEVERAGE_NO)
+,CHANGE_AMOUNT     number(7,2))
+;
+
+
+--Level 3 Tables
+DROP TABLE INCOMING_FUNDS CASCADE CONSTRAINTS;
+
+CREATE TABLE INCOMING_FUNDS
+(INCOMING_TRANS_ID  	number(4) references TRANSACTION_TABLE(TRANSACTION_ID)
+,TRANS_SINGLE_FUND  	number(7,2)
+,TRANS_SUM_FUNDS	  	number(7,2)
+,INC_TRANSFUNDS_DATE	Date
+,CHANGE_AMOUNT	  		number(7,2)
+,INC_TRANS_STATUS  		varchar2(12)
+)
+;
+
+
+DROP TABLE INCOMING_FUNDS_TEMP CASCADE CONSTRAINTS;  
+CREATE TABLE INCOMING_FUNDS_TEMP
+(INCOMING_TRANS_ID  	number(4) references TRANSACTION_TABLE(TRANSACTION_ID)
+,TRANS_SINGLE_FUND  	number(7,2)
+)
+;
+
+create or replace Trigger TRIGG_SLOT_DROP_COINS 
+AFTER INSERT on INCOMING_FUNDS_TEMP
+for each row
+
+DECLARE 
+V_INCOMING_TRANS_ID  INCOMING_FUNDS.INCOMING_TRANS_ID%TYPE;
+V_TRANS_SINGLE_FUND  	number(7,2) :=0;
+V_TRANS_SUM_FUNDS	  	number(7,2) := 0;
+V_INC_TRANSFUNDS_DATE	Date;
+V_CHANGE_AMOUNT	  		number(7,2) :=0;
+V_INC_TRANS_STATUS  		varchar2(12) ;
+
+V_AMOUNT_INCOMING   number(7,2) ;   
+V_TRANS_STATUS	    varchar2(12);
+V_REFUND_AMT	    number(7,2);		
+V_TOTAL_AMOUNT	    number(7,2);
+V_PRIOR_DAY_SOLD    number(6);
+V_END_TRANSTIME     varchar2(12);
+
+V_BEVERAGE_NO 	   number(4) ;
+V_BEVERAGE_PRICE   number(7,2);
+V_TOTAL_DAY_SOLD   number(6);
+V_BEVERAGE_AVAIL_NO number(6);
+ 
+
+V_penny   number(2) := 1;
+V_nickel  number(2) := 5;
+V_dime    number(2) := 10;
+V_quarter number(2) := 25;
+
+
+BEGIN
+
+IF :NEW.TRANS_SINGLE_FUND not IN(V_penny,V_nickel,V_dime,V_quarter) THEN
+
+-- To check coins dropped in Slot.
+RAISE_APPLICATION_ERROR(-20534,'Accepting only coins of 1,5,10,25 Cents');
+RAISE_APPLICATION_ERROR(-20535,'i.e. penny, nickel, dime, and quarter.');
+
+ELSE
+
+--Need To Trap the latest Transaction ID from The Transaction Table
+--The Transaction Table is triggered by the Customer Selection 
+-- and is the first table to be populated
+--The Sequence Transaction_seq generates the Transaction ID from the Machine 
+-- on the Transaction
+
+V_TRANS_SINGLE_FUND := :NEW.TRANS_SINGLE_FUND;
+
+SELECT max(TRANSACTION_ID)
+into V_INCOMING_TRANS_ID 
+from 
+TRANSACTION_TABLE
+where TRANS_DATE > SYSDATE-1;
+
+
+-- Collecting information to declared Variables from Transaction_Table
+select
+TRANSACTION_ID,TOTAL_AMOUNT
+,TRANS_DATE, CHANGE_AMOUNT, TRANS_STATUS, TRANS_BEVERAGE_NO
+into
+V_INCOMING_TRANS_ID,V_TRANS_SUM_FUNDS	  	
+,V_INC_TRANSFUNDS_DATE, V_CHANGE_AMOUNT, V_INC_TRANS_STATUS, V_BEVERAGE_NO
+From TRANSACTION_TABLE
+where TRANSACTION_ID = V_INCOMING_TRANS_ID  ;
+
+-- Inserting every single Coin drop into the table Incoming Funds
+INSERT into INCOMING_FUNDS
+(INCOMING_TRANS_ID,TRANS_SINGLE_FUND,TRANS_SUM_FUNDS
+,INC_TRANSFUNDS_DATE, CHANGE_AMOUNT, INC_TRANS_STATUS) 
+values
+(V_INCOMING_TRANS_ID,V_TRANS_SINGLE_FUND,V_TRANS_SUM_FUNDS	  	
+,V_INC_TRANSFUNDS_DATE, V_CHANGE_AMOUNT, V_INC_TRANS_STATUS
+)  ;
+
+select sum(TRANS_SINGLE_FUND) into V_TRANS_SUM_FUNDS
+from INCOMING_FUNDS 
+where INCOMING_TRANS_ID = V_INCOMING_TRANS_ID;
+
+  update INCOMING_FUNDS
+set TRANS_SUM_FUNDS = V_TRANS_SUM_FUNDS
+where INCOMING_TRANS_ID = V_INCOMING_TRANS_ID;
+
+
+------
+
+select 
+BEVERAGE_PRICE ,TOTAL_DAY_SOLD ,BEVERAGE_AVAIL_NO
+into
+V_BEVERAGE_PRICE, V_TOTAL_DAY_SOLD ,V_BEVERAGE_AVAIL_NO
+from BEVERAGE_INVENTORY
+where BEVERAGE_NO=V_BEVERAGE_NO;
+
+/*
+V_TOTAL_DAY_SOLD:=V_TOTAL_DAY_SOLD+1;
+V_BEVERAGE_AVAIL_NO:=V_BEVERAGE_AVAIL_NO-1;
+
+update BEVERAGE_INVENTORY
+set TOTAL_DAY_SOLD = V_TOTAL_DAY_SOLD
+, BEVERAGE_AVAIL_NO=V_BEVERAGE_AVAIL_NO
+where BEVERAGE_NO=V_BEVERAGE_NO;
+*/
+
+V_TRANS_STATUS:='Paid-Fully';
+V_TOTAL_AMOUNT :=  V_TRANS_SUM_FUNDS;
+V_REFUND_AMT := 0;	
+
+update transaction_table
+set AMOUNT_INCOMING = V_BEVERAGE_PRICE
+,TRANS_STATUS=V_TRANS_STATUS, TOTAL_AMOUNT=V_TRANS_SUM_FUNDS
+,PRIOR_DAY_SOLD=V_TOTAL_DAY_SOLD+1
+, CHANGE_AMOUNT=V_TRANS_SUM_FUNDS-V_BEVERAGE_PRICE
+,END_TRANSTIME=to_char(SYSDATE,'HH24:MI:SS')
+,REFUND_AMT = 0
+where TRANSACTION_ID = V_INCOMING_TRANS_ID ;
+
+ update INCOMING_FUNDS
+set TRANS_SUM_FUNDS = V_TRANS_SUM_FUNDS
+,CHANGE_AMOUNT=V_TRANS_SUM_FUNDS-V_BEVERAGE_PRICE
+where INCOMING_TRANS_ID = V_INCOMING_TRANS_ID;
+
+
+
+End IF;
+
+End;
+/
+
+
+
+
+INSERT into BEVERAGE_INVENTORY
+(BEVERAGE_NO ,BEVERAGE_NAME ,BEVERAGE_TYPE ,BEVERAGE_PRICE,TOTAL_DAY_SOLD,BEVERAGE_AVAIL_NO)
+values
+(25, 'Coca-cola', 'Soft Drink',55,17,2076); 
+
+INSERT into BEVERAGE_INVENTORY
+(BEVERAGE_NO ,BEVERAGE_NAME ,BEVERAGE_TYPE ,BEVERAGE_PRICE,TOTAL_DAY_SOLD,BEVERAGE_AVAIL_NO)
+values
+(35, 'Pepsi', 'Soft Drink',50,31,1098); 
+
+INSERT into BEVERAGE_INVENTORY
+(BEVERAGE_NO ,BEVERAGE_NAME ,BEVERAGE_TYPE ,BEVERAGE_PRICE,TOTAL_DAY_SOLD,BEVERAGE_AVAIL_NO)
+values
+(45, 'Soda', 'Soft Drink',45,19,2100); 
+
+
+INSERT into BEVERAGE_INVENTORY
+(BEVERAGE_NO ,BEVERAGE_NAME ,BEVERAGE_TYPE ,BEVERAGE_PRICE,TOTAL_DAY_SOLD,BEVERAGE_AVAIL_NO)
+values
+(55, 'Red Bull', 'Energy Drink',70,22,1056); 
+
+
+INSERT into TRANSACTION_TABLE
+(TRANSACTION_ID ,TRANS_STATUS ,REFUND_AMT ,TOTAL_AMOUNT ,PRIOR_DAY_SOLD    
+,TRANS_DATE ,START_TRANSTIME ,END_TRANSTIME,TRANS_BEVERAGE_NO ,CHANGE_AMOUNT)
+values
+(Transaction_seq.nextval,'Completed', 0, 75, 17, to_char(SYSDATE-1,'DD-MON-YYYY'),
+to_char(SYSDATE-1,'HH24-MI-SS'),to_char(SYSDATE-1,'HH24-MI-SS'), 25,75-55);
+
+INSERT into TRANSACTION_TABLE
+(TRANSACTION_ID ,TRANS_STATUS ,REFUND_AMT ,TOTAL_AMOUNT ,PRIOR_DAY_SOLD    
+,TRANS_DATE ,START_TRANSTIME ,END_TRANSTIME,TRANS_BEVERAGE_NO ,CHANGE_AMOUNT)
+values
+(Transaction_seq.nextval,'Completed', 0, 50, 31, to_char(SYSDATE-1,'DD-MON-YYYY'),
+to_char(SYSDATE-1,'HH24-MI-SS'),to_char(SYSDATE-1,'HH24-MI-SS'), 35,50-50);  
+
+ INSERT into TRANSACTION_TABLE
+(TRANSACTION_ID ,TRANS_STATUS ,REFUND_AMT ,TOTAL_AMOUNT ,PRIOR_DAY_SOLD    
+,TRANS_DATE ,START_TRANSTIME ,END_TRANSTIME,TRANS_BEVERAGE_NO ,CHANGE_AMOUNT)
+values
+(Transaction_seq.nextval,'Completed', 0, 75, 22, to_char(SYSDATE,'DD-MON-YYYY'),
+to_char(SYSDATE,'HH24-MI-SS'),to_char(SYSDATE,'HH24-MI-SS'), 35,75-70);  
+   
+ INSERT into TRANSACTION_TABLE
+(TRANSACTION_ID ,TRANS_STATUS ,REFUND_AMT ,PRIOR_DAY_SOLD    
+,TRANS_DATE ,START_TRANSTIME ,TRANS_BEVERAGE_NO )
+values
+(Transaction_seq.nextval,'Pending', 0, 22, to_char(SYSDATE,'DD-MON-YYYY'),
+to_char(SYSDATE,'HH24-MI-SS'), 25); 
+
+
+set lines 200 pages 40
+select * from BEVERAGE_INVENTORY;
+select * from TRANSACTION_TABLE;
+select * from INCOMING_FUNDS;
+select * from INCOMING_FUNDS_TEMP;
+
+INSERT INTO INCOMING_FUNDS_TEMP
+(INCOMING_TRANS_ID,TRANS_SINGLE_FUND)
+values
+(Transaction_seq.currval, 1);
+
+INSERT INTO INCOMING_FUNDS_TEMP
+(INCOMING_TRANS_ID,TRANS_SINGLE_FUND)
+values
+(Transaction_seq.currval, 10);
+
+INSERT INTO INCOMING_FUNDS_TEMP
+(INCOMING_TRANS_ID,TRANS_SINGLE_FUND)
+values
+(Transaction_seq.currval, 25);
+
+INSERT INTO INCOMING_FUNDS_TEMP
+(INCOMING_TRANS_ID,TRANS_SINGLE_FUND)
+values
+(Transaction_seq.currval, 5);
+
+INSERT INTO INCOMING_FUNDS_TEMP
+(INCOMING_TRANS_ID,TRANS_SINGLE_FUND)
+values
+(Transaction_seq.currval, 25);
+
+
+set lines 200 pages 40
+select * from BEVERAGE_INVENTORY;
+select * from TRANSACTION_TABLE;
+select * from INCOMING_FUNDS;
+select * from INCOMING_FUNDS_TEMP;

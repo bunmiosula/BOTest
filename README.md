@@ -1,2 +1,0 @@
-# BOTest
-Paste Test Project
